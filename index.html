@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MetroOS · Simulador de Memoria Virtual</title>
+<title>VirtualOS · Simulador de Memoria Virtual</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 
@@ -241,7 +241,7 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
 
 <div class="topbar">
   <div class="brand">
-    <div class="brand-mark">Metro<span>OS</span></div>
+    <div class="brand-mark">Virtual<span>OS</span></div>
     <div class="brand-sub">Gestor de memoria virtual</div>
   </div>
   <div class="boot-status">
@@ -258,7 +258,7 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
       <div class="panel-label">Asistente de instalación</div>
       <h1 class="setup-title">Configurar memoria del sistema</h1>
       <p class="setup-desc">
-        Antes de crear procesos, MetroOS necesita conocer el tamaño de la memoria principal (RAM),
+        Antes de crear procesos, VirtualOS necesita conocer el tamaño de la memoria principal (RAM),
         la memoria secundaria (disco) y el tamaño de página que usará el sistema de paginación.
         Todos los valores se expresan en kilobytes (KB).
       </p>
@@ -282,7 +282,7 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
       </div>
 
       <div class="btn-row">
-        <button class="btn" id="btn-install">Instalar y arrancar MetroOS</button>
+        <button class="btn" id="btn-install">Instalar y arrancar VirtualOS</button>
         <button class="btn secondary" id="btn-demo">Usar valores de ejemplo</button>
       </div>
       <div class="error-msg" id="setup-error"></div>
@@ -409,7 +409,7 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
 </div>
 
 <footer class="app-footer">
-  MetroOS — simulador educativo de memoria virtual por paginación · inspirado en
+  VirtualOS — simulador educativo de memoria virtual por paginación · inspirado en
   <a href="https://github.com/Ricardo96r/Simulador-de-memoria-virtual" target="_blank" rel="noopener">Ricardo96r/Simulador-de-memoria-virtual</a>
 </footer>
 
@@ -890,7 +890,7 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
   function instalarSistema(ram, disk, pageSize){
     sistema = crearSistema(ram, disk, pageSize);
     sistema.pageSizeActual = function(){ return this.pageSize; };
-    logear(`MetroOS instalado. RAM: ${ram} KB (${sistema.marcosRamTotal} marcos), Disco: ${disk} KB (${sistema.marcosDiskTotal} marcos), tamaño de página: ${pageSize} KB.`, 'ok');
+    logear(`VirtualOS instalado. RAM: ${ram} KB (${sistema.marcosRamTotal} marcos), Disco: ${disk} KB (${sistema.marcosDiskTotal} marcos), tamaño de página: ${pageSize} KB.`, 'ok');
   }
 
   // ===================== EVENTOS UI =====================
@@ -921,7 +921,7 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
     document.getElementById('setup-screen').classList.add('hidden');
     document.getElementById('main-screen').classList.remove('hidden');
     document.getElementById('boot-dot').classList.remove('off');
-    document.getElementById('boot-text').textContent = `MetroOS activo · página ${page} KB`;
+    document.getElementById('boot-text').textContent = `VirtualOS activo · página ${page} KB`;
     render();
   });
 
