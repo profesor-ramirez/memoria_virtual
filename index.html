@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MetroOS · Simulador de Memoria Virtual</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root{
+  --bg:#0b0e0d;
+  --bg-raised:#111614;
+  --bg-panel:#141b18;
+  --line:#243029;
+  --line-soft:#1b241f;
+  --ram:#5ee6a8;
+  --ram-dim:#1f3d2e;
+  --disk:#e8a13a;
+  --disk-dim:#3d2f16;
+  --blocked:#e85d5d;
+  --susp:#7a8aa3;
+  --text:#e9efe9;
+  --text-dim:#8fa097;
+  --text-faint:#5b6862;
+  --accent:#5ee6a8;
+  --mono: 'JetBrains Mono', monospace;
+  --disp: 'Space Grotesk', sans-serif;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--mono);
+  font-size:14px;
+  line-height:1.5;
+  min-height:100vh;
+}
+
+/* scanline texture */
+body::before{
+  content:"";
+  position:fixed; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px);
+  background-size: 100% 3px;
+  pointer-events:none;
+  z-index:1000;
+  mix-blend-mode:overlay;
+}
+
+a{color:var(--accent);}
+
+/* ===== Topbar ===== */
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 28px;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg, var(--bg-raised), var(--bg));
+  position:sticky; top:0; z-index:50;
+}
+.brand{display:flex;align-items:baseline;gap:10px;}
+.brand-mark{
+  font-family:var(--disp); font-weight:700; font-size:20px; letter-spacing:0.5px;
+  color:var(--text);
+}
+.brand-mark span{color:var(--accent);}
+.brand-sub{font-size:11px; color:var(--text-faint); letter-spacing:1.5px; text-transform:uppercase;}
+.boot-status{
+  display:flex; align-items:center; gap:8px;
+  font-size:11px; color:var(--text-dim); letter-spacing:0.5px;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+.dot.off{background:var(--text-faint); box-shadow:none;}
+
+/* ===== Layout ===== */
+.wrap{max-width:1400px; margin:0 auto; padding:24px 28px 80px;}
+
+.hero{
+  display:grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap:18px;
+  margin-bottom:22px;
+}
+@media (max-width:900px){ .hero{grid-template-columns:1fr;} }
+
+.panel{
+  background:var(--bg-panel);
+  border:1px solid var(--line);
+  border-radius:3px;
+  padding:18px 20px;
+  position:relative;
+}
+.panel-label{
+  font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--text-faint);
+  margin-bottom:10px; display:flex; align-items:center; gap:8px;
+}
+.panel-label::after{content:""; flex:1; height:1px; background:var(--line);}
+
+/* ===== Setup screen ===== */
+#setup-screen .panel{max-width:640px; margin:60px auto;}
+.setup-title{font-family:var(--disp); font-size:26px; font-weight:700; margin:0 0 6px;}
+.setup-desc{color:var(--text-dim); font-size:13px; margin:0 0 22px; line-height:1.6;}
+.field-row{display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:18px;}
+@media (max-width:640px){.field-row{grid-template-columns:1fr;}}
+.field label{display:block; font-size:11px; color:var(--text-dim); letter-spacing:0.5px; margin-bottom:6px;}
+.field input{
+  width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text);
+  padding:10px 12px; border-radius:3px; font-family:var(--mono); font-size:14px;
+}
+.field input:focus{outline:none; border-color:var(--accent);}
+.field .unit{font-size:10px; color:var(--text-faint); margin-top:4px;}
+
+.btn{
+  background:var(--accent); color:#06150f; border:none; padding:11px 20px;
+  font-family:var(--mono); font-weight:700; font-size:13px; letter-spacing:0.5px;
+  border-radius:3px; cursor:pointer; transition:transform .08s ease, box-shadow .15s ease;
+}
+.btn:hover{box-shadow:0 0 0 3px rgba(94,230,168,0.18);}
+.btn:active{transform:translateY(1px);}
+.btn.secondary{background:transparent; color:var(--text); border:1px solid var(--line);}
+.btn.secondary:hover{border-color:var(--text-dim); box-shadow:none;}
+.btn.danger{background:var(--blocked); color:#1a0303;}
+.btn:disabled{opacity:0.35; cursor:not-allowed; box-shadow:none;}
+.btn-row{display:flex; gap:10px; flex-wrap:wrap;}
+.error-msg{
+  color:var(--blocked); font-size:12px; margin-top:10px; min-height:16px;
+}
+
+/* ===== Stat tiles ===== */
+.stat-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--line);
+  border:1px solid var(--line); border-radius:3px; overflow:hidden; margin-bottom:18px;}
+@media (max-width:900px){.stat-grid{grid-template-columns:repeat(2,1fr);}}
+.stat{background:var(--bg-panel); padding:14px 16px;}
+.stat-num{font-family:var(--disp); font-size:24px; font-weight:700; line-height:1;}
+.stat-label{font-size:10px; color:var(--text-faint); letter-spacing:1px; text-transform:uppercase; margin-top:6px;}
+.stat-num.ram{color:var(--ram);}
+.stat-num.disk{color:var(--disk);}
+
+/* ===== Memory bars ===== */
+.mem-section{margin-bottom:18px;}
+.mem-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;}
+.mem-head h3{font-family:var(--disp); font-size:14px; margin:0; font-weight:600;}
+.mem-head .nums{font-size:11px; color:var(--text-dim);}
+.frame-grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(46px,1fr));
+  gap:4px;
+}
+.frame{
+  aspect-ratio:1; border-radius:2px; display:flex; align-items:center; justify-content:center;
+  font-size:9px; font-weight:600; color:#06150f; position:relative; cursor:default;
+  border:1px solid rgba(0,0,0,0.2);
+  transition:transform .1s ease;
+}
+.frame:hover{transform:scale(1.08); z-index:2;}
+.frame.free{background:var(--bg); border:1px dashed var(--line); color:var(--text-faint);}
+.frame.ram-used{background:var(--ram);}
+.frame.disk-used{background:var(--disk); color:#241500;}
+.frame .tip{
+  display:none; position:absolute; bottom:115%; left:50%; transform:translateX(-50%);
+  background:#000; color:#fff; padding:5px 8px; border-radius:3px; font-size:10px;
+  white-space:nowrap; z-index:10; border:1px solid var(--line);
+}
+.frame:hover .tip{display:block;}
+
+/* ===== Process table ===== */
+.proc-table-wrap{overflow-x:auto;}
+table{width:100%; border-collapse:collapse; font-size:12px;}
+th{
+  text-align:left; padding:8px 10px; color:var(--text-faint); font-weight:600;
+  text-transform:uppercase; font-size:10px; letter-spacing:0.8px;
+  border-bottom:1px solid var(--line);
+}
+td{padding:9px 10px; border-bottom:1px solid var(--line-soft); vertical-align:middle;}
+tr:hover td{background:rgba(255,255,255,0.015);}
+.tag{
+  display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:10px;
+  font-size:10px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase;
+}
+.tag::before{content:""; width:6px; height:6px; border-radius:50%;}
+.tag.activo{background:rgba(94,230,168,0.12); color:var(--ram);}
+.tag.activo::before{background:var(--ram);}
+.tag.bloqueado{background:rgba(232,93,93,0.12); color:var(--blocked);}
+.tag.bloqueado::before{background:var(--blocked);}
+.tag.suspendido{background:rgba(122,138,163,0.15); color:var(--susp);}
+.tag.suspendido::before{background:var(--susp);}
+.tag.espera{background:rgba(232,161,58,0.12); color:var(--disk);}
+.tag.espera::before{background:var(--disk);}
+.row-actions{display:flex; gap:6px; flex-wrap:wrap;}
+.mini-btn{
+  background:transparent; border:1px solid var(--line); color:var(--text-dim);
+  font-family:var(--mono); font-size:10px; padding:4px 8px; border-radius:3px; cursor:pointer;
+}
+.mini-btn:hover{border-color:var(--text-dim); color:var(--text);}
+.mini-btn.del:hover{border-color:var(--blocked); color:var(--blocked);}
+.empty-row{text-align:center; color:var(--text-faint); padding:24px; font-size:12px;}
+
+/* ===== Create process form ===== */
+.create-form{display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-bottom:6px;}
+.create-form .field{flex:1; min-width:140px;}
+
+/* ===== Log ===== */
+.log-panel{height:260px; overflow-y:auto; background:var(--bg); border:1px solid var(--line);
+  border-radius:3px; padding:10px 12px; font-size:11.5px;}
+.log-line{padding:3px 0; color:var(--text-dim); border-bottom:1px dashed var(--line-soft);}
+.log-line .ts{color:var(--text-faint); margin-right:8px;}
+.log-line.ok{color:var(--ram);}
+.log-line.warn{color:var(--disk);}
+.log-line.err{color:var(--blocked);}
+
+/* ===== Bono translator ===== */
+.translator-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+@media (max-width:900px){.translator-grid{grid-template-columns:1fr;}}
+.bits-display{
+  font-family:var(--mono); font-size:13px; background:var(--bg); border:1px solid var(--line);
+  border-radius:3px; padding:12px; word-break:break-all; min-height:42px; line-height:1.7;
+}
+.bits-display .seg{padding:1px 3px; border-radius:2px;}
+.bits-display .seg.page{background:rgba(94,230,168,0.18); color:var(--ram);}
+.bits-display .seg.offset{background:rgba(232,161,58,0.18); color:var(--disk);}
+.translator-legend{display:flex; gap:16px; font-size:11px; color:var(--text-dim); margin-top:8px;}
+.legend-chip{display:flex; align-items:center; gap:6px;}
+.legend-chip .sw{width:10px;height:10px;border-radius:2px;}
+
+footer.app-footer{
+  text-align:center; color:var(--text-faint); font-size:11px; padding:30px 0 10px;
+}
+footer.app-footer a{color:var(--text-dim); text-decoration:none;}
+
+.hidden{display:none !important;}
+
+::-webkit-scrollbar{width:8px; height:8px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--line); border-radius:4px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">Metro<span>OS</span></div>
+    <div class="brand-sub">Gestor de memoria virtual</div>
+  </div>
+  <div class="boot-status">
+    <span class="dot off" id="boot-dot"></span>
+    <span id="boot-text">Sistema no instalado</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ PANTALLA DE INSTALACIÓN ============ -->
+  <div id="setup-screen">
+    <div class="panel">
+      <div class="panel-label">Asistente de instalación</div>
+      <h1 class="setup-title">Configurar memoria del sistema</h1>
+      <p class="setup-desc">
+        Antes de crear procesos, MetroOS necesita conocer el tamaño de la memoria principal (RAM),
+        la memoria secundaria (disco) y el tamaño de página que usará el sistema de paginación.
+        Todos los valores se expresan en kilobytes (KB).
+      </p>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="set-ram">Memoria principal</label>
+          <input type="number" id="set-ram" min="1" value="256">
+          <div class="unit">KB de RAM disponibles</div>
+        </div>
+        <div class="field">
+          <label for="set-disk">Memoria secundaria</label>
+          <input type="number" id="set-disk" min="1" value="1024">
+          <div class="unit">KB de almacenamiento (swap)</div>
+        </div>
+        <div class="field">
+          <label for="set-page">Tamaño de página</label>
+          <input type="number" id="set-page" min="1" value="16">
+          <div class="unit">KB por marco / página</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="btn-install">Instalar y arrancar MetroOS</button>
+        <button class="btn secondary" id="btn-demo">Usar valores de ejemplo</button>
+      </div>
+      <div class="error-msg" id="setup-error"></div>
+    </div>
+  </div>
+
+  <!-- ============ PANTALLA PRINCIPAL DEL SIMULADOR ============ -->
+  <div id="main-screen" class="hidden">
+
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="stat-num" id="stat-creados">0</div>
+        <div class="stat-label">Procesos creados</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num ram" id="stat-marcos-ram">0</div>
+        <div class="stat-label">Marcos RAM en uso</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="stat-ram-libre">0 KB</div>
+        <div class="stat-label">RAM disponible</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num disk" id="stat-marcos-disk">0</div>
+        <div class="stat-label">Marcos en disco</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="stat-movimientos">0</div>
+        <div class="stat-label">Movimientos de página</div>
+      </div>
+    </div>
+
+    <div class="hero">
+      <!-- Memoria principal -->
+      <div class="panel mem-section" style="margin-bottom:0;">
+        <div class="mem-head">
+          <h3>Memoria principal (RAM)</h3>
+          <span class="nums" id="ram-nums">0/0 marcos</span>
+        </div>
+        <div class="frame-grid" id="ram-grid"></div>
+      </div>
+
+      <!-- Memoria secundaria -->
+      <div class="panel mem-section" style="margin-bottom:0;">
+        <div class="mem-head">
+          <h3>Memoria secundaria (disco)</h3>
+          <span class="nums" id="disk-nums">0/0 marcos</span>
+        </div>
+        <div class="frame-grid" id="disk-grid"></div>
+      </div>
+    </div>
+
+    <!-- Crear proceso -->
+    <div class="panel" style="margin-bottom:18px;">
+      <div class="panel-label">Crear proceso</div>
+      <div class="create-form">
+        <div class="field">
+          <label for="proc-nombre">Nombre del proceso</label>
+          <input type="text" id="proc-nombre" placeholder="ej. navegador.exe">
+        </div>
+        <div class="field">
+          <label for="proc-tamano">Tamaño (KB)</label>
+          <input type="number" id="proc-tamano" min="1" placeholder="ej. 64">
+        </div>
+        <button class="btn" id="btn-crear-proceso">Crear proceso</button>
+      </div>
+      <div class="error-msg" id="proc-error"></div>
+    </div>
+
+    <!-- Tabla de procesos -->
+    <div class="panel" style="margin-bottom:18px;">
+      <div class="panel-label">Procesos del sistema</div>
+      <div class="proc-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre</th>
+              <th>Tamaño</th>
+              <th>Páginas</th>
+              <th>En RAM</th>
+              <th>En disco</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="proc-tbody">
+            <tr><td colspan="8" class="empty-row">No hay procesos creados todavía.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="hero">
+      <!-- Bitácora -->
+      <div class="panel">
+        <div class="panel-label">Bitácora del sistema</div>
+        <div class="log-panel" id="log-panel"></div>
+      </div>
+
+      <!-- Traductor de direcciones (BONO) -->
+      <div class="panel">
+        <div class="panel-label">Bono · Traductor de direcciones binarias</div>
+        <div class="field" style="margin-bottom:10px;">
+          <label for="trans-proceso">Proceso</label>
+          <select id="trans-proceso" style="width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:3px; font-family:var(--mono); font-size:13px;"></select>
+        </div>
+        <div class="field" style="margin-bottom:10px;">
+          <label for="trans-input">Dirección lógica (binaria)</label>
+          <input type="text" id="trans-input" placeholder="ej. 000010110">
+        </div>
+        <button class="btn secondary" id="btn-traducir" style="margin-bottom:14px;">Traducir dirección</button>
+
+        <div class="translator-legend" style="margin-top:0; margin-bottom:8px;">
+          <div class="legend-chip"><span class="sw" style="background:var(--ram);"></span>número de página</div>
+          <div class="legend-chip"><span class="sw" style="background:var(--disk);"></span>desplazamiento</div>
+        </div>
+        <div class="bits-display" id="trans-output">—</div>
+        <div class="error-msg" id="trans-error"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer class="app-footer">
+  MetroOS — simulador educativo de memoria virtual por paginación · inspirado en
+  <a href="https://github.com/Ricardo96r/Simulador-de-memoria-virtual" target="_blank" rel="noopener">Ricardo96r/Simulador-de-memoria-virtual</a>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  // ===================== ESTADO GLOBAL =====================
+  let sistema = null; // se inicializa al instalar
+
+  function crearSistema(ramTotal, diskTotal, pageSize){
+    const marcosRam = Math.floor(ramTotal / pageSize);
+    const marcosDisk = Math.floor(diskTotal / pageSize);
+    return {
+      ramTotal, diskTotal, pageSize,
+      marcosRamTotal: marcosRam,
+      marcosDiskTotal: marcosDisk,
+      // cada slot: null (libre) o {procesoId, pagina}
+      ram: new Array(marcosRam).fill(null),
+      disk: new Array(marcosDisk).fill(null),
+      procesos: [],
+      siguienteId: 1,
+      procesosCreados: 0,
+      movimientosPagina: 0,
+      pageFaults: 0,
+      log: []
+    };
+  }
+
+  // ===================== UTILIDADES =====================
+  function ahora(){
+    const d = new Date();
+    return d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }
+
+  function logear(msg, tipo){
+    sistema.log.unshift({ts: ahora(), msg, tipo: tipo || ''});
+    if(sistema.log.length > 300) sistema.log.pop();
+    renderLog();
+  }
+
+  function marcosLibresRam(){
+    return sistema.ram.reduce((acc,v)=> acc + (v===null?1:0), 0);
+  }
+  function marcosLibresDisk(){
+    return sistema.disk.reduce((acc,v)=> acc + (v===null?1:0), 0);
+  }
+  function marcosUsadosRam(){ return sistema.marcosRamTotal - marcosLibresRam(); }
+  function marcosUsadosDisk(){ return sistema.marcosDiskTotal - marcosLibresDisk(); }
+
+  function buscarProceso(id){
+    return sistema.procesos.find(p => p.id === id) || null;
+  }
+
+  // Asigna `cantidad` marcos libres de un arreglo (ram o disk) al proceso/pagina dados.
+  // Devuelve los índices asignados, o null si no hay suficientes.
+  function asignarMarcos(arr, cantidad, procesoId, paginasIds){
+    const libres = [];
+    for(let i=0;i<arr.length;i++){
+      if(arr[i] === null) libres.push(i);
+      if(libres.length === cantidad) break;
+    }
+    if(libres.length < cantidad) return null;
+    libres.forEach((idx, k)=>{
+      arr[idx] = {procesoId, pagina: paginasIds[k]};
+    });
+    return libres;
+  }
+
+  function liberarMarcosDe(arr, procesoId){
+    for(let i=0;i<arr.length;i++){
+      if(arr[i] && arr[i].procesoId === procesoId) arr[i] = null;
+    }
+  }
+
+  function contarMarcosDe(arr, procesoId){
+    return arr.reduce((acc,v)=> acc + ((v && v.procesoId===procesoId) ? 1:0), 0);
+  }
+
+  // ===================== LÓGICA DE PROCESOS =====================
+  // Reglas (según especificación original):
+  // - páginas totales = ceil(tamaño / pageSize)
+  // - Un proceso entra como "Activo" sólo si la mitad o más de sus páginas
+  //   caben en memoria principal disponible en ese momento.
+  // - El resto de páginas (si no caben todas en RAM) se ubican en memoria secundaria.
+  // - Si ni siquiera la mitad cabe en RAM, ni hay espacio total (RAM+disco) suficiente,
+  //   el proceso queda en estado "En espera" (rechazado de la lista de activos).
+
+  function crearProceso(nombre, tamanoKB){
+    const paginasTotales = Math.ceil(tamanoKB / sistema.pageSizeActual());
+    const id = sistema.siguienteId++;
+    sistema.procesosCreados++;
+
+    const libresRam = marcosLibresRam();
+    const libresDisk = marcosLibresDisk();
+    const mitad = Math.ceil(paginasTotales / 2);
+
+    const proceso = {
+      id, nombre, tamanoKB, paginasTotales,
+      estado: null,
+      paginaIds: Array.from({length:paginasTotales}, (_,i)=>i), // 0..n-1
+      framesRam: [],   // índices en sistema.ram
+      framesDisk: []   // índices en sistema.disk
+    };
+
+    if(libresRam >= mitad && (libresRam + libresDisk) >= paginasTotales){
+      // Cabe la mitad o más en RAM: proceso activo.
+      const enRam = Math.min(paginasTotales, libresRam);
+      const enDisk = paginasTotales - enRam;
+
+      const paginasRam = proceso.paginaIds.slice(0, enRam);
+      const paginasDisk = proceso.paginaIds.slice(enRam);
+
+      proceso.framesRam = asignarMarcos(sistema.ram, enRam, id, paginasRam) || [];
+      if(enDisk > 0){
+        proceso.framesDisk = asignarMarcos(sistema.disk, enDisk, id, paginasDisk) || [];
+      }
+      proceso.estado = 'Activo';
+      sistema.procesos.push(proceso);
+      logear(`Proceso #${id} "${nombre}" creado: ${paginasTotales} página(s) — ${enRam} en RAM, ${enDisk} en disco. Estado: Activo.`, 'ok');
+    } else if((libresRam + libresDisk) >= paginasTotales){
+      // No cabe la mitad en RAM ahora mismo, pero sí hay espacio total (RAM+disco):
+      // se ubica completo en disco y queda en espera para ser activado luego.
+      proceso.framesDisk = asignarMarcos(sistema.disk, paginasTotales, id, proceso.paginaIds) || [];
+      proceso.estado = 'En espera';
+      sistema.procesos.push(proceso);
+      logear(`Proceso #${id} "${nombre}" creado: no hay suficiente RAM disponible para la mitad de sus páginas. Se almacenó completo en disco. Estado: En espera.`, 'warn');
+    } else {
+      logear(`No se pudo crear el proceso "${nombre}": no hay suficiente espacio en memoria principal ni secundaria para sus ${paginasTotales} página(s).`, 'err');
+      sistema.siguienteId--; // revertir el id no usado
+      sistema.procesosCreados--;
+      return {ok:false, error:'No hay suficiente espacio en memoria principal ni secundaria para este proceso.'};
+    }
+
+    return {ok:true, proceso};
+  }
+
+  function bloquearProceso(id){
+    const p = buscarProceso(id);
+    if(!p) return;
+    if(p.estado === 'Bloqueado'){ return; }
+    if(p.estado === 'Terminado'){ return; }
+
+    const enRamAntes = contarMarcosDe(sistema.ram, id);
+    if(enRamAntes === 0){
+      p.estado = 'Bloqueado';
+      logear(`Proceso #${id} "${p.nombre}" bloqueado (ya no tenía páginas en RAM).`, 'warn');
+      render();
+      return;
+    }
+
+    // Mover todas las páginas que el proceso tiene en RAM hacia disco.
+    const libresDisk = marcosLibresDisk();
+    if(libresDisk < enRamAntes){
+      logear(`No se pudo bloquear completamente el proceso #${id} "${p.nombre}": disco insuficiente para recibir sus páginas (se requieren ${enRamAntes}, hay ${libresDisk}).`, 'err');
+      return;
+    }
+
+    const paginasAMover = [];
+    for(let i=0;i<sistema.ram.length;i++){
+      if(sistema.ram[i] && sistema.ram[i].procesoId === id){
+        paginasAMover.push(sistema.ram[i].pagina);
+        sistema.ram[i] = null;
+      }
+    }
+    const nuevosFramesDisk = asignarMarcos(sistema.disk, paginasAMover.length, id, paginasAMover);
+    p.framesDisk = p.framesDisk.concat(nuevosFramesDisk);
+    p.framesRam = [];
+    sistema.movimientosPagina += paginasAMover.length;
+    p.estado = 'Bloqueado';
+    logear(`Se ha bloqueado el proceso #${id} "${p.nombre}", pasando ${paginasAMover.length} página(s) de memoria principal a memoria secundaria.`, 'warn');
+  }
+
+  function suspenderProceso(id){
+    const p = buscarProceso(id);
+    if(!p || p.estado === 'Terminado') return;
+    if(p.estado === 'Suspendido') return;
+
+    const enRamAntes = contarMarcosDe(sistema.ram, id);
+    if(enRamAntes > 0){
+      const paginasAMover = [];
+      for(let i=0;i<sistema.ram.length;i++){
+        if(sistema.ram[i] && sistema.ram[i].procesoId === id){
+          paginasAMover.push(sistema.ram[i].pagina);
+          sistema.ram[i] = null;
+        }
+      }
+      const libresDisk = marcosLibresDisk();
+      if(libresDisk < paginasAMover.length){
+        // revertir
+        paginasAMover.forEach((pag, k)=>{ /* no se puede revertir limpio, pero esto es borde raro */ });
+        logear(`No se pudo suspender completamente el proceso #${id} "${p.nombre}": espacio insuficiente en disco.`, 'err');
+        return;
+      }
+      const nuevosFramesDisk = asignarMarcos(sistema.disk, paginasAMover.length, id, paginasAMover);
+      p.framesDisk = p.framesDisk.concat(nuevosFramesDisk);
+      p.framesRam = [];
+      sistema.movimientosPagina += paginasAMover.length;
+    }
+    p.estado = 'Suspendido';
+    logear(`Se ha suspendido el proceso #${id} "${p.nombre}", pasando ${enRamAntes} página(s) de memoria principal a memoria secundaria.`, 'warn');
+  }
+
+  function reanudarProceso(id){
+    const p = buscarProceso(id);
+    if(!p || p.estado === 'Terminado') return;
+    if(p.estado === 'Activo') return;
+
+    const enDiskAntes = contarMarcosDe(sistema.disk, id);
+    const libresRam = marcosLibresRam();
+    const mitad = Math.ceil(p.paginasTotales / 2);
+    const enRamActual = contarMarcosDe(sistema.ram, id);
+    const necesarias = p.paginasTotales - enRamActual;
+
+    if(libresRam + enRamActual < mitad){
+      logear(`No se pudo reanudar el proceso #${id} "${p.nombre}": no hay suficientes marcos libres en RAM para alcanzar al menos la mitad de sus páginas.`, 'err');
+      return;
+    }
+
+    const aMover = Math.min(necesarias, libresRam);
+    if(aMover > 0){
+      const paginasAMover = [];
+      let movidos = 0;
+      for(let i=0;i<sistema.disk.length && movidos < aMover;i++){
+        if(sistema.disk[i] && sistema.disk[i].procesoId === id){
+          paginasAMover.push(sistema.disk[i].pagina);
+          sistema.disk[i] = null;
+          movidos++;
+        }
+      }
+      const nuevosFramesRam = asignarMarcos(sistema.ram, paginasAMover.length, id, paginasAMover);
+      p.framesRam = p.framesRam.concat(nuevosFramesRam);
+      sistema.movimientosPagina += paginasAMover.length;
+      logear(`Se ha puesto en listo el proceso #${id} "${p.nombre}", pasando ${paginasAMover.length} página(s) de memoria secundaria a memoria principal.`, 'ok');
+    }
+    p.estado = 'Activo';
+  }
+
+  function eliminarProceso(id){
+    const p = buscarProceso(id);
+    if(!p) return;
+    const enRam = contarMarcosDe(sistema.ram, id);
+    const enDisk = contarMarcosDe(sistema.disk, id);
+    liberarMarcosDe(sistema.ram, id);
+    liberarMarcosDe(sistema.disk, id);
+    sistema.procesos = sistema.procesos.filter(x => x.id !== id);
+    logear(`Se ha eliminado el proceso #${id} "${p.nombre}", liberando ${enRam} página(s) de RAM y ${enDisk} página(s) de disco.`, 'err');
+  }
+
+  // ===================== RENDER =====================
+  function fmtKB(n){ return n + ' KB'; }
+
+  function renderStats(){
+    document.getElementById('stat-creados').textContent = sistema.procesosCreados;
+    document.getElementById('stat-marcos-ram').textContent = marcosUsadosRam() + ' / ' + sistema.marcosRamTotal;
+    document.getElementById('stat-ram-libre').textContent = fmtKB(marcosLibresRam() * sistema.pageSizeActual());
+    document.getElementById('stat-marcos-disk').textContent = marcosUsadosDisk() + ' / ' + sistema.marcosDiskTotal;
+    document.getElementById('stat-movimientos').textContent = sistema.movimientosPagina;
+  }
+
+  function colorForProcess(id){
+    // genera un tono estable a partir del id, dentro de la paleta verde/ámbar del sistema
+    return id;
+  }
+
+  function renderGrid(containerId, arr, tipoClase){
+    const cont = document.getElementById(containerId);
+    cont.innerHTML = '';
+    arr.forEach((slot, idx)=>{
+      const div = document.createElement('div');
+      if(slot === null){
+        div.className = 'frame free';
+        div.textContent = '·';
+        const tip = document.createElement('span');
+        tip.className = 'tip';
+        tip.textContent = `Marco ${idx} — libre`;
+        div.appendChild(tip);
+      } else {
+        const p = buscarProceso(slot.procesoId);
+        div.className = 'frame ' + tipoClase;
+        div.textContent = '#' + slot.procesoId;
+        const tip = document.createElement('span');
+        tip.className = 'tip';
+        tip.textContent = `Marco ${idx} — ${p? p.nombre : '?'} (pág. ${slot.pagina})`;
+        div.appendChild(tip);
+      }
+      cont.appendChild(div);
+    });
+  }
+
+  function renderMemoria(){
+    renderGrid('ram-grid', sistema.ram, 'ram-used');
+    renderGrid('disk-grid', sistema.disk, 'disk-used');
+    document.getElementById('ram-nums').textContent = `${marcosUsadosRam()}/${sistema.marcosRamTotal} marcos`;
+    document.getElementById('disk-nums').textContent = `${marcosUsadosDisk()}/${sistema.marcosDiskTotal} marcos`;
+  }
+
+  function estadoTagClass(estado){
+    switch(estado){
+      case 'Activo': return 'activo';
+      case 'Bloqueado': return 'bloqueado';
+      case 'Suspendido': return 'suspendido';
+      case 'En espera': return 'espera';
+      default: return '';
+    }
+  }
+
+  function renderTabla(){
+    const tbody = document.getElementById('proc-tbody');
+    tbody.innerHTML = '';
+    if(sistema.procesos.length === 0){
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No hay procesos creados todavía.</td></tr>';
+      return;
+    }
+    sistema.procesos.forEach(p=>{
+      const enRam = contarMarcosDe(sistema.ram, p.id);
+      const enDisk = contarMarcosDe(sistema.disk, p.id);
+      const tr = document.createElement('tr');
+
+      const tagClass = estadoTagClass(p.estado);
+
+      tr.innerHTML = `
+        <td>#${p.id}</td>
+        <td>${escapeHtml(p.nombre)}</td>
+        <td>${p.tamanoKB} KB</td>
+        <td>${p.paginasTotales}</td>
+        <td>${enRam}</td>
+        <td>${enDisk}</td>
+        <td><span class="tag ${tagClass}">${p.estado}</span></td>
+        <td></td>
+      `;
+
+      const actionsTd = tr.querySelector('td:last-child');
+      const rowActions = document.createElement('div');
+      rowActions.className = 'row-actions';
+
+      if(p.estado !== 'Terminado'){
+        if(p.estado !== 'Activo'){
+          rowActions.appendChild(makeMiniBtn('Reanudar', ()=>{ reanudarProceso(p.id); render(); }));
+        }
+        if(p.estado !== 'Bloqueado'){
+          rowActions.appendChild(makeMiniBtn('Bloquear', ()=>{ bloquearProceso(p.id); render(); }));
+        }
+        if(p.estado !== 'Suspendido'){
+          rowActions.appendChild(makeMiniBtn('Suspender', ()=>{ suspenderProceso(p.id); render(); }));
+        }
+        const delBtn = makeMiniBtn('Eliminar', ()=>{ eliminarProceso(p.id); render(); });
+        delBtn.classList.add('del');
+        rowActions.appendChild(delBtn);
+      }
+
+      actionsTd.appendChild(rowActions);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function makeMiniBtn(label, onClick){
+    const b = document.createElement('button');
+    b.className = 'mini-btn';
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function renderLog(){
+    const panel = document.getElementById('log-panel');
+    panel.innerHTML = '';
+    sistema.log.forEach(entry=>{
+      const div = document.createElement('div');
+      div.className = 'log-line ' + (entry.tipo||'');
+      div.innerHTML = `<span class="ts">${entry.ts}</span>${escapeHtml(entry.msg)}`;
+      panel.appendChild(div);
+    });
+  }
+
+  function renderSelectorProcesos(){
+    const sel = document.getElementById('trans-proceso');
+    const valorPrevio = sel.value;
+    sel.innerHTML = '';
+    if(sistema.procesos.length === 0){
+      const opt = document.createElement('option');
+      opt.textContent = 'No hay procesos disponibles';
+      opt.value = '';
+      sel.appendChild(opt);
+      return;
+    }
+    sistema.procesos.forEach(p=>{
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `#${p.id} — ${p.nombre} (${p.paginasTotales} pág.)`;
+      sel.appendChild(opt);
+    });
+    if(valorPrevio) sel.value = valorPrevio;
+  }
+
+  function render(){
+    renderStats();
+    renderMemoria();
+    renderTabla();
+    renderSelectorProcesos();
+  }
+
+  // ===================== TRADUCTOR DE DIRECCIONES (BONO) =====================
+  function bitsNecesarios(n){
+    if(n <= 1) return 1;
+    return Math.ceil(Math.log2(n));
+  }
+
+  function traducirDireccion(procesoId, binStr){
+    const p = buscarProceso(procesoId);
+    if(!p) return {ok:false, error:'Selecciona un proceso válido.'};
+
+    const limpio = binStr.trim();
+    if(!/^[01]+$/.test(limpio)){
+      return {ok:false, error:'La dirección debe contener únicamente 0s y 1s.'};
+    }
+
+    const bitsOffset = bitsNecesarios(sistema.pageSizeActual());
+    const bitsPagina = bitsNecesarios(p.paginasTotales);
+    const bitsTotal = bitsOffset + bitsPagina;
+
+    if(limpio.length > bitsTotal){
+      return {ok:false, error:`La dirección tiene demasiados bits. Este proceso usa ${bitsTotal} bits (${bitsPagina} de página + ${bitsOffset} de desplazamiento).`};
+    }
+
+    const padded = limpio.padStart(bitsTotal, '0');
+    const numPaginaBin = padded.slice(0, bitsPagina);
+    const offsetBin = padded.slice(bitsPagina);
+
+    const numPagina = parseInt(numPaginaBin, 2);
+    const offset = parseInt(offsetBin, 2);
+
+    if(numPagina >= p.paginasTotales){
+      return {ok:false, error:`Número de página fuera de rango (página ${numPagina}, el proceso solo tiene ${p.paginasTotales} página(s)).`};
+    }
+    if(offset >= sistema.pageSizeActual()){
+      return {ok:false, error:`Desplazamiento fuera de rango (offset ${offset}, tamaño de página ${sistema.pageSizeActual()} KB).`};
+    }
+
+    // localizar el marco físico donde vive numPagina
+    let marcoFisico = -1, ubicacion = '';
+    for(let i=0;i<sistema.ram.length;i++){
+      if(sistema.ram[i] && sistema.ram[i].procesoId === procesoId && sistema.ram[i].pagina === numPagina){
+        marcoFisico = i; ubicacion = 'RAM'; break;
+      }
+    }
+    if(marcoFisico === -1){
+      for(let i=0;i<sistema.disk.length;i++){
+        if(sistema.disk[i] && sistema.disk[i].procesoId === procesoId && sistema.disk[i].pagina === numPagina){
+          marcoFisico = i; ubicacion = 'Disco'; break;
+        }
+      }
+    }
+
+    if(marcoFisico === -1){
+      return {ok:false, error:'Esa página no está actualmente ubicada en memoria (estado inconsistente).'};
+    }
+
+    const bitsMarco = bitsNecesarios(ubicacion==='RAM' ? sistema.marcosRamTotal : sistema.marcosDiskTotal);
+    const marcoBin = marcoFisico.toString(2).padStart(bitsMarco, '0');
+    const direccionFisicaBin = marcoBin + offsetBin;
+
+    return {
+      ok:true,
+      bitsPagina, bitsOffset, numPaginaBin, offsetBin,
+      numPagina, offset, ubicacion, marcoFisico,
+      direccionFisicaBin
+    };
+  }
+
+  // ===================== INSTALACIÓN =====================
+  function instalarSistema(ram, disk, pageSize){
+    sistema = crearSistema(ram, disk, pageSize);
+    sistema.pageSizeActual = function(){ return this.pageSize; };
+    logear(`MetroOS instalado. RAM: ${ram} KB (${sistema.marcosRamTotal} marcos), Disco: ${disk} KB (${sistema.marcosDiskTotal} marcos), tamaño de página: ${pageSize} KB.`, 'ok');
+  }
+
+  // ===================== EVENTOS UI =====================
+  document.getElementById('btn-demo').addEventListener('click', ()=>{
+    document.getElementById('set-ram').value = 256;
+    document.getElementById('set-disk').value = 1024;
+    document.getElementById('set-page').value = 16;
+  });
+
+  document.getElementById('btn-install').addEventListener('click', ()=>{
+    const ram = parseInt(document.getElementById('set-ram').value, 10);
+    const disk = parseInt(document.getElementById('set-disk').value, 10);
+    const page = parseInt(document.getElementById('set-page').value, 10);
+    const errEl = document.getElementById('setup-error');
+
+    if(!ram || !disk || !page || ram<=0 || disk<=0 || page<=0){
+      errEl.textContent = 'Todos los valores deben ser números mayores que cero.';
+      return;
+    }
+    if(page > ram){
+      errEl.textContent = 'El tamaño de página no puede ser mayor que la memoria principal total.';
+      return;
+    }
+    errEl.textContent = '';
+
+    instalarSistema(ram, disk, page);
+
+    document.getElementById('setup-screen').classList.add('hidden');
+    document.getElementById('main-screen').classList.remove('hidden');
+    document.getElementById('boot-dot').classList.remove('off');
+    document.getElementById('boot-text').textContent = `MetroOS activo · página ${page} KB`;
+    render();
+  });
+
+  document.getElementById('btn-crear-proceso').addEventListener('click', ()=>{
+    const nombreInput = document.getElementById('proc-nombre');
+    const tamanoInput = document.getElementById('proc-tamano');
+    const errEl = document.getElementById('proc-error');
+
+    const nombre = nombreInput.value.trim();
+    const tamano = parseInt(tamanoInput.value, 10);
+
+    if(!nombre){
+      errEl.textContent = 'Indica un nombre para el proceso.';
+      return;
+    }
+    if(!tamano || tamano <= 0){
+      errEl.textContent = 'Indica un tamaño válido en KB.';
+      return;
+    }
+
+    const resultado = crearProceso(nombre, tamano);
+    if(!resultado.ok){
+      errEl.textContent = resultado.error;
+      render();
+      return;
+    }
+
+    errEl.textContent = '';
+    nombreInput.value = '';
+    tamanoInput.value = '';
+    render();
+  });
+
+  document.getElementById('btn-traducir').addEventListener('click', ()=>{
+    const sel = document.getElementById('trans-proceso');
+    const input = document.getElementById('trans-input');
+    const errEl = document.getElementById('trans-error');
+    const outEl = document.getElementById('trans-output');
+
+    const procesoId = parseInt(sel.value, 10);
+    if(!procesoId){
+      errEl.textContent = 'No hay un proceso seleccionado.';
+      return;
+    }
+
+    const resultado = traducirDireccion(procesoId, input.value);
+    if(!resultado.ok){
+      errEl.textContent = resultado.error;
+      outEl.innerHTML = '—';
+      return;
+    }
+    errEl.textContent = '';
+    outEl.innerHTML =
+      `<span class="seg page">${resultado.numPaginaBin}</span><span class="seg offset">${resultado.offsetBin}</span>` +
+      `<br><br>Página lógica: <b>${resultado.numPagina}</b> → ubicada en <b>${resultado.ubicacion}</b>, marco físico <b>${resultado.marcoFisico}</b><br>` +
+      `Desplazamiento: <b>${resultado.offset}</b><br><br>` +
+      `Dirección física (binaria): <b>${resultado.direccionFisicaBin}</b>`;
+  });
+
+  // permitir Enter en los inputs de creación de proceso
+  document.getElementById('proc-tamano').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') document.getElementById('btn-crear-proceso').click();
+  });
+  document.getElementById('proc-nombre').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') document.getElementById('btn-crear-proceso').click();
+  });
+  document.getElementById('trans-input').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') document.getElementById('btn-traducir').click();
+  });
+
+})();
+</script>
+</body>
+</html>
