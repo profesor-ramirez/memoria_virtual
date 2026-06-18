@@ -214,6 +214,11 @@ tr:hover td{background:rgba(255,255,255,0.015);}
 /* ===== Bono translator ===== */
 .translator-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
 @media (max-width:900px){.translator-grid{grid-template-columns:1fr;}}
+.select-input{
+  width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text);
+  padding:10px 12px; border-radius:3px; font-family:var(--mono); font-size:13px;
+}
+.select-input:focus{outline:none; border-color:var(--accent);}
 .bits-display{
   font-family:var(--mono); font-size:13px; background:var(--bg); border:1px solid var(--line);
   border-radius:3px; padding:12px; word-break:break-all; min-height:42px; line-height:1.7;
@@ -224,6 +229,32 @@ tr:hover td{background:rgba(255,255,255,0.015);}
 .translator-legend{display:flex; gap:16px; font-size:11px; color:var(--text-dim); margin-top:8px;}
 .legend-chip{display:flex; align-items:center; gap:6px;}
 .legend-chip .sw{width:10px;height:10px;border-radius:2px;}
+
+.mmu-result{
+  border:1px solid var(--line); border-radius:3px; padding:16px; background:var(--bg);
+  margin-bottom:4px;
+}
+.mmu-status{
+  display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:3px;
+  font-size:12.5px; font-weight:600; margin-bottom:16px; letter-spacing:0.2px;
+}
+.mmu-status::before{content:""; width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+.mmu-status.hit{background:rgba(94,230,168,0.1); color:var(--ram);}
+.mmu-status.hit::before{background:var(--ram); box-shadow:0 0 8px var(--ram);}
+.mmu-status.fault{background:rgba(232,161,58,0.1); color:var(--disk);}
+.mmu-status.fault::before{background:var(--disk); box-shadow:0 0 8px var(--disk);}
+
+.mmu-addr-row{display:flex; align-items:center; gap:12px; margin-bottom:16px;}
+.mmu-addr-block{flex:1; min-width:0;}
+.mmu-addr-label{display:block; font-size:10px; color:var(--text-faint); letter-spacing:1px; text-transform:uppercase; margin-bottom:6px;}
+.mmu-arrow{color:var(--text-faint); font-size:16px; padding-top:14px; flex-shrink:0;}
+@media (max-width:560px){.mmu-addr-row{flex-direction:column; align-items:stretch;} .mmu-arrow{display:none;}}
+
+.mmu-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:3px; overflow:hidden;}
+@media (max-width:560px){.mmu-grid{grid-template-columns:1fr;}}
+.mmu-cell{background:var(--bg-panel); padding:10px 12px;}
+.mmu-cell-label{display:block; font-size:9.5px; color:var(--text-faint); letter-spacing:0.8px; text-transform:uppercase; margin-bottom:5px;}
+.mmu-cell-value{display:block; font-family:var(--mono); font-size:14px; font-weight:600;}
 
 footer.app-footer{
   text-align:center; color:var(--text-faint); font-size:11px; padding:30px 0 10px;
@@ -241,7 +272,7 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
 
 <div class="topbar">
   <div class="brand">
-    <div class="brand-mark">Virtual<span>OS</span></div>
+    <div class="brand-mark">Metro<span>OS</span></div>
     <div class="brand-sub">Gestor de memoria virtual</div>
   </div>
   <div class="boot-status">
@@ -385,23 +416,61 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
 
       <!-- Traductor de direcciones (BONO) -->
       <div class="panel">
-        <div class="panel-label">Bono · Traductor de direcciones binarias</div>
-        <div class="field" style="margin-bottom:10px;">
-          <label for="trans-proceso">Proceso</label>
-          <select id="trans-proceso" style="width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:3px; font-family:var(--mono); font-size:13px;"></select>
-        </div>
-        <div class="field" style="margin-bottom:10px;">
-          <label for="trans-input">Dirección lógica (binaria)</label>
-          <input type="text" id="trans-input" placeholder="ej. 000010110">
-        </div>
-        <button class="btn secondary" id="btn-traducir" style="margin-bottom:14px;">Traducir dirección</button>
+        <div class="panel-label">Bono · Traductor de direcciones (MMU)</div>
 
-        <div class="translator-legend" style="margin-top:0; margin-bottom:8px;">
-          <div class="legend-chip"><span class="sw" style="background:var(--ram);"></span>número de página</div>
-          <div class="legend-chip"><span class="sw" style="background:var(--disk);"></span>desplazamiento</div>
+        <div class="field-row" style="grid-template-columns:1fr 1fr 1fr; margin-bottom:14px;">
+          <div class="field">
+            <label for="trans-proceso">Proceso</label>
+            <select id="trans-proceso" class="select-input"></select>
+          </div>
+          <div class="field">
+            <label for="trans-pagina">Página lógica</label>
+            <select id="trans-pagina" class="select-input"></select>
+          </div>
+          <div class="field">
+            <label for="trans-offset">Desplazamiento</label>
+            <select id="trans-offset" class="select-input"></select>
+          </div>
         </div>
-        <div class="bits-display" id="trans-output">—</div>
+
+        <button class="btn secondary" id="btn-traducir" style="margin-bottom:14px;">Acceder a la dirección</button>
         <div class="error-msg" id="trans-error"></div>
+
+        <div id="mmu-result" class="mmu-result hidden">
+          <div class="mmu-status" id="mmu-status"></div>
+
+          <div class="mmu-addr-row">
+            <div class="mmu-addr-block">
+              <span class="mmu-addr-label">Lógica (binaria)</span>
+              <div class="bits-display" id="mmu-logica">—</div>
+            </div>
+            <div class="mmu-arrow">→</div>
+            <div class="mmu-addr-block">
+              <span class="mmu-addr-label">Física (binaria)</span>
+              <div class="bits-display" id="mmu-fisica-bin">—</div>
+            </div>
+          </div>
+
+          <div class="mmu-grid">
+            <div class="mmu-cell">
+              <span class="mmu-cell-label">Marco físico</span>
+              <span class="mmu-cell-value" id="mmu-marco">—</span>
+            </div>
+            <div class="mmu-cell">
+              <span class="mmu-cell-label">Dirección física (hex)</span>
+              <span class="mmu-cell-value" id="mmu-hex">—</span>
+            </div>
+            <div class="mmu-cell">
+              <span class="mmu-cell-label">Ubicación previa</span>
+              <span class="mmu-cell-value" id="mmu-ubicacion">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="translator-legend" style="margin-top:14px;">
+          <div class="legend-chip"><span class="sw" style="background:var(--ram);"></span>en memoria principal</div>
+          <div class="legend-chip"><span class="sw" style="background:var(--disk);"></span>fallo de página (en disco)</div>
+        </div>
       </div>
     </div>
 
@@ -800,6 +869,7 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
       opt.textContent = 'No hay procesos disponibles';
       opt.value = '';
       sel.appendChild(opt);
+      poblarSelectorPagina();
       return;
     }
     sistema.procesos.forEach(p=>{
@@ -808,7 +878,52 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
       opt.textContent = `#${p.id} — ${p.nombre} (${p.paginasTotales} pág.)`;
       sel.appendChild(opt);
     });
-    if(valorPrevio) sel.value = valorPrevio;
+    if(valorPrevio && buscarProceso(parseInt(valorPrevio,10))) sel.value = valorPrevio;
+    poblarSelectorPagina();
+  }
+
+  function poblarSelectorPagina(){
+    const selProc = document.getElementById('trans-proceso');
+    const selPag = document.getElementById('trans-pagina');
+    const valorPrevio = selPag.value;
+    selPag.innerHTML = '';
+
+    const procesoId = parseInt(selProc.value, 10);
+    const p = buscarProceso(procesoId);
+
+    if(!p){
+      const opt = document.createElement('option');
+      opt.textContent = '—';
+      opt.value = '';
+      selPag.appendChild(opt);
+      poblarSelectorOffset();
+      return;
+    }
+
+    for(let i=0;i<p.paginasTotales;i++){
+      const opt = document.createElement('option');
+      opt.value = i;
+      const enRam = sistema.ram.some(slot => slot && slot.procesoId === procesoId && slot.pagina === i);
+      opt.textContent = `Página ${i} ${enRam ? '(en RAM)' : '(en disco)'}`;
+      selPag.appendChild(opt);
+    }
+    if(valorPrevio !== '' && parseInt(valorPrevio,10) < p.paginasTotales) selPag.value = valorPrevio;
+    poblarSelectorOffset();
+  }
+
+  function poblarSelectorOffset(){
+    const selOffset = document.getElementById('trans-offset');
+    const valorPrevio = selOffset.value;
+    selOffset.innerHTML = '';
+
+    const pageSize = sistema.pageSizeActual();
+    for(let i=0;i<pageSize;i++){
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = i;
+      selOffset.appendChild(opt);
+    }
+    if(valorPrevio !== '' && parseInt(valorPrevio,10) < pageSize) selOffset.value = valorPrevio;
   }
 
   function render(){
@@ -824,65 +939,114 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
     return Math.ceil(Math.log2(n));
   }
 
-  function traducirDireccion(procesoId, binStr){
+  function traducirDireccion(procesoId, numPagina, offset){
     const p = buscarProceso(procesoId);
     if(!p) return {ok:false, error:'Selecciona un proceso válido.'};
 
-    const limpio = binStr.trim();
-    if(!/^[01]+$/.test(limpio)){
-      return {ok:false, error:'La dirección debe contener únicamente 0s y 1s.'};
+    if(p.estado === 'Terminado'){
+      return {ok:false, error:'Ese proceso ya fue eliminado.'};
+    }
+    if(numPagina === null || isNaN(numPagina) || numPagina < 0 || numPagina >= p.paginasTotales){
+      return {ok:false, error:`Número de página fuera de rango (0 a ${p.paginasTotales - 1}).`};
+    }
+    if(offset === null || isNaN(offset) || offset < 0 || offset >= sistema.pageSizeActual()){
+      return {ok:false, error:`Desplazamiento fuera de rango (0 a ${sistema.pageSizeActual() - 1}).`};
     }
 
     const bitsOffset = bitsNecesarios(sistema.pageSizeActual());
     const bitsPagina = bitsNecesarios(p.paginasTotales);
-    const bitsTotal = bitsOffset + bitsPagina;
+    const numPaginaBin = numPagina.toString(2).padStart(bitsPagina, '0');
+    const offsetBin = offset.toString(2).padStart(bitsOffset, '0');
+    const direccionLogicaBin = numPaginaBin + offsetBin;
 
-    if(limpio.length > bitsTotal){
-      return {ok:false, error:`La dirección tiene demasiados bits. Este proceso usa ${bitsTotal} bits (${bitsPagina} de página + ${bitsOffset} de desplazamiento).`};
-    }
-
-    const padded = limpio.padStart(bitsTotal, '0');
-    const numPaginaBin = padded.slice(0, bitsPagina);
-    const offsetBin = padded.slice(bitsPagina);
-
-    const numPagina = parseInt(numPaginaBin, 2);
-    const offset = parseInt(offsetBin, 2);
-
-    if(numPagina >= p.paginasTotales){
-      return {ok:false, error:`Número de página fuera de rango (página ${numPagina}, el proceso solo tiene ${p.paginasTotales} página(s)).`};
-    }
-    if(offset >= sistema.pageSizeActual()){
-      return {ok:false, error:`Desplazamiento fuera de rango (offset ${offset}, tamaño de página ${sistema.pageSizeActual()} KB).`};
-    }
-
-    // localizar el marco físico donde vive numPagina
-    let marcoFisico = -1, ubicacion = '';
+    // ¿La página ya está en RAM?
+    let marcoRam = -1;
     for(let i=0;i<sistema.ram.length;i++){
       if(sistema.ram[i] && sistema.ram[i].procesoId === procesoId && sistema.ram[i].pagina === numPagina){
-        marcoFisico = i; ubicacion = 'RAM'; break;
+        marcoRam = i; break;
       }
     }
-    if(marcoFisico === -1){
+
+    let huboFallo = false;
+    let marcoLiberadoInfo = null;
+
+    if(marcoRam === -1){
+      // FALLO DE PÁGINA: la página debe estar en disco. Hay que traerla a RAM.
+      huboFallo = true;
+      sistema.pageFaults++;
+
+      let marcoDisk = -1;
       for(let i=0;i<sistema.disk.length;i++){
         if(sistema.disk[i] && sistema.disk[i].procesoId === procesoId && sistema.disk[i].pagina === numPagina){
-          marcoFisico = i; ubicacion = 'Disco'; break;
+          marcoDisk = i; break;
         }
+      }
+      if(marcoDisk === -1){
+        return {ok:false, error:'Esa página no se encuentra ni en RAM ni en disco (estado inconsistente).'};
+      }
+
+      // Buscar un marco libre en RAM
+      let destinoRam = sistema.ram.findIndex(slot => slot === null);
+
+      if(destinoRam === -1){
+        // No hay marcos libres en RAM: aplicar reemplazo simple (FIFO sobre el primer marco ocupado)
+        // que pertenezca a OTRO proceso, priorizando procesos no activos; si no hay, se usa el marco 0.
+        destinoRam = sistema.ram.findIndex(slot => slot !== null && slot.procesoId !== procesoId);
+        if(destinoRam === -1) destinoRam = 0;
+
+        const victima = sistema.ram[destinoRam];
+        const procVictima = buscarProceso(victima.procesoId);
+
+        // Mover la página víctima de RAM a un marco libre en disco
+        const libreDisk = sistema.disk.findIndex(slot => slot === null);
+        if(libreDisk === -1){
+          return {ok:false, error:'No se pudo traer la página a memoria principal: no hay espacio libre en disco para desalojar otra página (memoria llena).'};
+        }
+        sistema.disk[libreDisk] = {procesoId: victima.procesoId, pagina: victima.pagina};
+        if(procVictima){
+          procVictima.framesDisk.push(libreDisk);
+          procVictima.framesRam = procVictima.framesRam.filter(idx => idx !== destinoRam);
+        }
+        sistema.movimientosPagina++;
+        marcoLiberadoInfo = {
+          procesoId: victima.procesoId,
+          nombre: procVictima ? procVictima.nombre : ('#' + victima.procesoId),
+          pagina: victima.pagina,
+          marcoRam: destinoRam
+        };
+      }
+
+      // Colocar la página solicitada en el marco de RAM elegido
+      sistema.ram[destinoRam] = {procesoId, pagina: numPagina};
+      sistema.disk[marcoDisk] = null;
+      p.framesRam.push(destinoRam);
+      p.framesDisk = p.framesDisk.filter(idx => idx !== marcoDisk);
+      sistema.movimientosPagina++;
+
+      marcoRam = destinoRam;
+
+      if(marcoLiberadoInfo){
+        logear(`Fallo de página: proceso #${procesoId} "${p.nombre}" solicitó la página ${numPagina}. Se desalojó la página ${marcoLiberadoInfo.pagina} del proceso "${marcoLiberadoInfo.nombre}" hacia disco para liberar el marco ${marcoLiberadoInfo.marcoRam}, y se trajo la página solicitada a memoria principal.`, 'warn');
+      } else {
+        logear(`Fallo de página: proceso #${procesoId} "${p.nombre}" solicitó la página ${numPagina}, que estaba en disco. Se trajo al marco ${marcoRam} de memoria principal.`, 'warn');
       }
     }
 
-    if(marcoFisico === -1){
-      return {ok:false, error:'Esa página no está actualmente ubicada en memoria (estado inconsistente).'};
-    }
-
-    const bitsMarco = bitsNecesarios(ubicacion==='RAM' ? sistema.marcosRamTotal : sistema.marcosDiskTotal);
-    const marcoBin = marcoFisico.toString(2).padStart(bitsMarco, '0');
+    const bitsMarco = bitsNecesarios(sistema.marcosRamTotal);
+    const marcoBin = marcoRam.toString(2).padStart(bitsMarco, '0');
     const direccionFisicaBin = marcoBin + offsetBin;
+    const direccionFisicaHex = '0x' + parseInt(direccionFisicaBin, 2).toString(16).toUpperCase().padStart(Math.ceil(direccionFisicaBin.length/4), '0');
 
     return {
       ok:true,
-      bitsPagina, bitsOffset, numPaginaBin, offsetBin,
-      numPagina, offset, ubicacion, marcoFisico,
-      direccionFisicaBin
+      bitsPagina, bitsOffset,
+      numPaginaBin, offsetBin, direccionLogicaBin,
+      numPagina, offset,
+      huboFallo,
+      marcoLiberadoInfo,
+      marcoFisico: marcoRam,
+      direccionFisicaBin,
+      direccionFisicaHex
     };
   }
 
@@ -955,30 +1119,61 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
     render();
   });
 
-  document.getElementById('btn-traducir').addEventListener('click', ()=>{
-    const sel = document.getElementById('trans-proceso');
-    const input = document.getElementById('trans-input');
-    const errEl = document.getElementById('trans-error');
-    const outEl = document.getElementById('trans-output');
+  document.getElementById('trans-proceso').addEventListener('change', poblarSelectorPagina);
+  document.getElementById('trans-pagina').addEventListener('change', poblarSelectorOffset);
 
-    const procesoId = parseInt(sel.value, 10);
+  document.getElementById('btn-traducir').addEventListener('click', ()=>{
+    const selProc = document.getElementById('trans-proceso');
+    const selPag = document.getElementById('trans-pagina');
+    const selOffset = document.getElementById('trans-offset');
+    const errEl = document.getElementById('trans-error');
+    const resultBox = document.getElementById('mmu-result');
+
+    const procesoId = parseInt(selProc.value, 10);
+    const numPagina = parseInt(selPag.value, 10);
+    const offset = parseInt(selOffset.value, 10);
+
     if(!procesoId){
       errEl.textContent = 'No hay un proceso seleccionado.';
+      resultBox.classList.add('hidden');
       return;
     }
 
-    const resultado = traducirDireccion(procesoId, input.value);
+    const resultado = traducirDireccion(procesoId, numPagina, offset);
     if(!resultado.ok){
       errEl.textContent = resultado.error;
-      outEl.innerHTML = '—';
+      resultBox.classList.add('hidden');
+      render();
       return;
     }
+
     errEl.textContent = '';
-    outEl.innerHTML =
-      `<span class="seg page">${resultado.numPaginaBin}</span><span class="seg offset">${resultado.offsetBin}</span>` +
-      `<br><br>Página lógica: <b>${resultado.numPagina}</b> → ubicada en <b>${resultado.ubicacion}</b>, marco físico <b>${resultado.marcoFisico}</b><br>` +
-      `Desplazamiento: <b>${resultado.offset}</b><br><br>` +
-      `Dirección física (binaria): <b>${resultado.direccionFisicaBin}</b>`;
+    resultBox.classList.remove('hidden');
+
+    const statusEl = document.getElementById('mmu-status');
+    if(resultado.huboFallo){
+      statusEl.className = 'mmu-status fault';
+      let texto = `Fallo de página: la página ${resultado.numPagina} no estaba en memoria principal. Se trajo desde disco al marco ${resultado.marcoFisico}.`;
+      if(resultado.marcoLiberadoInfo){
+        texto += ` Se desalojó la página ${resultado.marcoLiberadoInfo.pagina} del proceso "${resultado.marcoLiberadoInfo.nombre}" hacia disco para hacer espacio.`;
+      }
+      statusEl.textContent = texto;
+    } else {
+      statusEl.className = 'mmu-status hit';
+      statusEl.textContent = `La página ${resultado.numPagina} ya se encontraba en memoria principal (marco ${resultado.marcoFisico}). No hubo fallo de página.`;
+    }
+
+    document.getElementById('mmu-logica').innerHTML =
+      `<span class="seg page">${resultado.numPaginaBin}</span><span class="seg offset">${resultado.offsetBin}</span>`;
+    document.getElementById('mmu-fisica-bin').textContent = resultado.direccionFisicaBin;
+    document.getElementById('mmu-marco').textContent = resultado.marcoFisico;
+    document.getElementById('mmu-hex').textContent = resultado.direccionFisicaHex;
+    document.getElementById('mmu-ubicacion').textContent = resultado.huboFallo ? 'Disco (ahora en RAM)' : 'RAM';
+
+    render();
+    poblarSelectorPagina();
+    selPag.value = numPagina;
+    selOffset.value = offset;
   });
 
   // permitir Enter en los inputs de creación de proceso
@@ -987,9 +1182,6 @@ footer.app-footer a{color:var(--text-dim); text-decoration:none;}
   });
   document.getElementById('proc-nombre').addEventListener('keydown', (e)=>{
     if(e.key === 'Enter') document.getElementById('btn-crear-proceso').click();
-  });
-  document.getElementById('trans-input').addEventListener('keydown', (e)=>{
-    if(e.key === 'Enter') document.getElementById('btn-traducir').click();
   });
 
 })();
